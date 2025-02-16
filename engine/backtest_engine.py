@@ -4,6 +4,8 @@ from typing import Dict, Any, List, Optional
 import pandas as pd
 import numpy as np
 from .base_engine import BaseEngine
+from .data_loader import DataLoader
+from strategies.strategy_factory import get_strategy
 from utils.log_init import get_logger
 
 logger = get_logger(__name__)
@@ -11,198 +13,250 @@ logger = get_logger(__name__)
 class BacktestEngine(BaseEngine):
     """回测引擎实现"""
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         """初始化引擎"""
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
         self.cerebro = None
         self.results = None
-    
-    def run(self) -> Dict[str, Any]:
-        """运行回测
+        self.benchmark_data = None
+        self.data_loader = DataLoader()
         
-        Returns:
-            回测结果字典
-        """
-        try:
-            self.is_running = True
-            self.status = "正在初始化"
-            self.progress = 0.0
-            
-            # 创建回测引擎
-            self.cerebro = bt.Cerebro()
-            
-            # 设置初始资金
-            self.cerebro.broker.setcash(self.initial_cash)
-            
-            # 设置交易成本
-            self.cerebro.broker.setcommission(
-                commission=self.commission,
-                margin=self.margin,
-                mult=self.size
-            )
-            
-            # 设置滑点
-            if self.slippage > 0:
-                self.cerebro.broker.set_slippage_fixed(self.slippage)
-            
-            # 设置以收盘价交易
-            if self.trade_on_close:
-                self.cerebro.broker.set_coc(True)
-            
-            # 添加数据
-            self.status = "正在加载数据"
-            self.progress = 0.2
-            self._add_data()
-            
-            # 添加策略
-            self.status = "正在配置策略"
-            self.progress = 0.4
-            self.cerebro.addstrategy(
-                self.strategy_class,
-                **self.strategy_params
-            )
-            
-            # 添加分析器
-            self.status = "正在配置分析器"
-            self.progress = 0.6
-            self._add_analyzers()
-            
-            # 运行回测
-            self.status = "正在运行回测"
-            self.progress = 0.8
-            self.results = self.cerebro.run()
-            
-            # 生成结果
-            self.status = "正在生成报告"
-            self.progress = 0.9
-            result = self._generate_results()
-            
-            self.status = "完成"
-            self.progress = 1.0
-            self.is_running = False
-            
-            return result
-            
-        except Exception as e:
-            self.error = e
-            self.status = "错误"
-            self.is_running = False
-            logger.error("回测执行失败", exc_info=True)
-            raise
+        # 获取策略类
+        self.strategy_class = get_strategy(self.strategy_name)
     
-    def _add_data(self):
-        """添加回测数据"""
+    def load_benchmark(self):
+        """加载基准数据"""
         try:
-            for symbol, info in self.symbols.items():
-                # 这里需要实现数据加载逻辑
-                # 示例：从CSV文件加载
-                data = bt.feeds.PandasData(
-                    dataname=self._load_data(symbol),
-                    fromdate=self.start_date,
-                    todate=self.end_date,
-                    name=symbol
-                )
-                self.cerebro.adddata(data)
+            logger.info("Loading benchmark data...")
+            df = self.data_loader.load_index_data(
+                symbol="sh000300",
+                start_date=self.start_date,
+                end_date=self.end_date
+            )
+            
+            if df is not None:
+                # 计算基准收益率
+                df['Return'] = df['Close'].pct_change()
+                self.benchmark_data = df
+                logger.info("Successfully loaded benchmark data")
+            else:
+                logger.warning("Failed to load benchmark data")
                 
         except Exception as e:
-            logger.error(f"Failed to add data", exc_info=True)
-            raise
+            logger.error("Failed to load benchmark data", exc_info=True)
+            self.benchmark_data = None
     
-    def _load_data(self, symbol: str) -> pd.DataFrame:
+    def load_data(self, symbol: str) -> Optional[bt.feeds.PandasData]:
         """加载股票数据
         
         Args:
             symbol: 股票代码
             
         Returns:
-            数据DataFrame
+            backtrader数据源
         """
-        # 这里需要实现实际的数据加载逻辑
-        # 示例：生成随机数据
-        dates = pd.date_range(
-            start=self.start_date,
-            end=self.end_date,
-            freq='D'
-        )
-        
-        df = pd.DataFrame({
-            'Open': np.random.normal(100, 10, len(dates)),
-            'High': np.random.normal(105, 10, len(dates)),
-            'Low': np.random.normal(95, 10, len(dates)),
-            'Close': np.random.normal(100, 10, len(dates)),
-            'Volume': np.random.normal(1000000, 200000, len(dates)),
-        }, index=dates)
-        
-        return df
+        try:
+            # 加载数据
+            df = self.data_loader.load_stock_data(
+                symbol=symbol,
+                start_date=self.start_date,
+                end_date=self.end_date
+            )
+            
+            if df is None:
+                logger.warning(f"No data loaded for {symbol}")
+                return None
+            
+            # 转换为backtrader数据源
+            data = bt.feeds.PandasData(
+                dataname=df,
+                fromdate=self.start_date,
+                todate=self.end_date,
+                name=symbol
+            )
+            
+            return data
+            
+        except Exception as e:
+            logger.error(f"Failed to load data for {symbol}", exc_info=True)
+            return None
     
-    def _add_analyzers(self):
+    def add_analyzers(self):
         """添加分析器"""
-        self.cerebro.addanalyzer(bt.analyzers.SharpeRatio)
-        self.cerebro.addanalyzer(bt.analyzers.DrawDown)
-        self.cerebro.addanalyzer(bt.analyzers.TradeAnalyzer)
-        self.cerebro.addanalyzer(bt.analyzers.Returns)
-        self.cerebro.addanalyzer(bt.analyzers.TimeReturn)
+        if self.cerebro is None:
+            return
+            
+        self.cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
+        self.cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+        self.cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trades')
+        self.cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
+        self.cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='time_returns')
+        self.cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
+        
+        logger.info("Added analyzers to cerebro")
+    
+    def run(self) -> Dict[str, Any]:
+        """运行回测"""
+        try:
+            self.is_running = True
+            
+            # 加载基准数据
+            self.update_progress(0.1, "正在加载基准数据")
+            self.load_benchmark()
+            
+            # 创建回测引擎
+            self.update_progress(0.2, "正在初始化回测引擎")
+            self.cerebro = bt.Cerebro()
+            
+            # 设置初始资金
+            self.cerebro.broker.setcash(self.initial_cash)
+            
+            # 设置交易成本
+            self.cerebro.broker.setcommission(commission=self.commission)
+            
+            # 添加数据
+            self.update_progress(0.3, "正在加载交易数据")
+            data_loaded = False
+            for symbol in self.symbols:
+                data = self.load_data(symbol)
+                if data is not None:
+                    self.cerebro.adddata(data)
+                    data_loaded = True
+            
+            if not data_loaded:
+                raise ValueError("No data loaded for any symbol")
+            
+            # 添加策略
+            self.update_progress(0.5, "正在配置策略")
+            self.cerebro.addstrategy(self.strategy_class, **self._strategy_params)
+            
+            # 添加分析器
+            self.update_progress(0.6, "正在配置分析器")
+            self.add_analyzers()
+            
+            # 运行回测
+            self.update_progress(0.7, "正在执行回测")
+            self.results = self.cerebro.run()
+            
+            # 生成结果
+            self.update_progress(0.9, "正在生成报告")
+            result = self._generate_results()
+            
+            self.update_progress(1.0, "回测完成")
+            self.is_running = False
+            
+            return result
+            
+        except Exception as e:
+            self.error = str(e)
+            self.status = "错误"
+            self.is_running = False
+            logger.error("回测执行失败", exc_info=True)
+            raise
     
     def _generate_results(self) -> Dict[str, Any]:
-        """生成回测结果
-        
-        Returns:
-            结果字典
-        """
-        strategy = self.results[0]
-        
-        # 计算关键指标
-        total_return = strategy.analyzers.returns.get_analysis()['rtot']
-        sharpe_ratio = strategy.analyzers.sharperatio.get_analysis()['sharperatio']
-        drawdown = strategy.analyzers.drawdown.get_analysis()
-        trades = strategy.analyzers.tradeanalyzer.get_analysis()
-        
-        return {
-            "summary": {
-                "total_return": total_return,
-                "sharpe_ratio": sharpe_ratio,
-                "max_drawdown": drawdown['max']['drawdown'],
-                "max_drawdown_period": drawdown['max']['len'],
-                "trade_count": trades.get('total', {}).get('total', 0),
-                "win_rate": trades.get('won', {}).get('total', 0) / trades.get('total', {}).get('total', 1)
-            },
-            "trades": self._format_trades(trades),
-            "returns": self._get_returns(strategy),
-            "positions": self._get_positions(strategy)
-        }
+        """生成回测结果"""
+        try:
+            if not self.results:
+                return {"error": "No results available"}
+                
+            strategy = self.results[0]
+            
+            # 获取分析结果
+            returns = strategy.analyzers.returns.get_analysis()
+            sharpe = strategy.analyzers.sharpe.get_analysis()
+            drawdown = strategy.analyzers.drawdown.get_analysis()
+            trades = strategy.analyzers.trades.get_analysis()
+            
+            # 计算策略收益曲线
+            portfolio_stats = strategy.analyzers.pyfolio.get_analysis()
+            returns_df = pd.DataFrame(
+                portfolio_stats['returns'],
+                columns=['strategy_returns']
+            )
+            
+            # 添加基准收益率
+            if self.benchmark_data is not None:
+                benchmark_returns = self.benchmark_data['Return']
+                returns_df = returns_df.join(
+                    benchmark_returns.rename('benchmark_returns'),
+                    how='left'
+                )
+            
+            # 计算累计收益
+            returns_df['strategy_cum_returns'] = (1 + returns_df['strategy_returns']).cumprod()
+            if 'benchmark_returns' in returns_df.columns:
+                returns_df['benchmark_cum_returns'] = (1 + returns_df['benchmark_returns']).cumprod()
+            
+            return {
+                "summary": {
+                    "total_return": returns.get('rtot', 0),
+                    "sharpe_ratio": sharpe.get('sharperatio', 0),
+                    "max_drawdown": drawdown.get('max', {}).get('drawdown', 0),
+                    "max_drawdown_period": drawdown.get('max', {}).get('len', 0),
+                    "trade_count": trades.get('total', {}).get('total', 0),
+                    "win_rate": trades.get('won', {}).get('total', 0) / 
+                               max(trades.get('total', {}).get('total', 1), 1),
+                    "profit_factor": (
+                        trades.get('won', {}).get('pnl', 0) /
+                        abs(trades.get('lost', {}).get('pnl', 1))
+                    ),
+                    "avg_trade_return": trades.get('won', {}).get('pnl', 0) /
+                                      max(trades.get('total', {}).get('total', 1), 1)
+                },
+                "returns": returns_df.to_dict(orient='index'),
+                "trades": self._format_trades(trades),
+                "positions": self.get_positions() if hasattr(self, 'get_positions') else []
+            }
+            
+        except Exception as e:
+            logger.error("Failed to generate results", exc_info=True)
+            return {
+                "error": str(e)
+            }
     
     def _format_trades(self, trades: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """格式化交易记录
-        
-        Args:
-            trades: 交易分析结果
+        """格式化交易记录"""
+        formatted_trades = []
+        if not trades:
+            return formatted_trades
             
-        Returns:
-            交易记录列表
-        """
-        # 这里需要实现交易记录的格式化
-        return []
+        try:
+            closed_trades = trades.get('closed', [])
+            for trade in closed_trades:
+                formatted_trades.append({
+                    'datetime': trade.dtclose.strftime('%Y-%m-%d %H:%M:%S'),
+                    'symbol': trade.data._name,
+                    'type': 'LONG' if trade.long else 'SHORT',
+                    'size': trade.size,
+                    'price': trade.price,
+                    'commission': trade.commission,
+                    'pnl': trade.pnl,
+                    'return': trade.pnlcomm / (trade.price * trade.size)
+                })
+        except Exception as e:
+            logger.error("Failed to format trades", exc_info=True)
+            
+        return formatted_trades
     
-    def _get_returns(self, strategy) -> List[Dict[str, Any]]:
-        """获取收益率数据
-        
-        Args:
-            strategy: 策略实例
+    def get_positions(self) -> List[Dict[str, Any]]:
+        """获取当前持仓"""
+        positions = []
+        if not self.results:
+            return positions
             
-        Returns:
-            收益率数据列表
-        """
-        # 这里需要实现收益率数据的提取
-        return []
-    
-    def _get_positions(self, strategy) -> List[Dict[str, Any]]:
-        """获取持仓数据
-        
-        Args:
-            strategy: 策略实例
+        try:
+            strategy = self.results[0]
+            for data in strategy.datas:
+                pos = strategy.getposition(data)
+                if pos.size != 0:
+                    positions.append({
+                        'symbol': data._name,
+                        'size': pos.size,
+                        'price': pos.price,
+                        'value': pos.size * pos.price
+                    })
+        except Exception as e:
+            logger.error("Failed to get positions", exc_info=True)
             
-        Returns:
-            持仓数据列表
-        """
-        # 这里需要实现持仓数据的提取
-        return []
+        return positions

@@ -19,3 +19,6 @@ tqdm>=4.66.1
 # 可选依赖
 xlsxwriter>=3.1.9  # Excel导出支持
 jinja2>=3.1.2      # 报告模板
+
+tushare
+baostock
