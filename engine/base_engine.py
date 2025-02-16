@@ -1,59 +1,84 @@
-import logging
+from typing import Dict, Any, Optional
 from datetime import datetime
-from typing import Dict, List, Any, Optional
-from pathlib import Path
+from utils.log_init import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class BaseEngine:
     """回测引擎基类"""
     
     def __init__(
         self,
-        symbols: List[str],
-        strategy_name: str,
+        strategy_class: type,
+        strategy_params: Dict[str, Any],
+        symbols: Dict[str, Dict[str, str]],
         start_date: datetime,
         end_date: datetime,
-        initial_cash: float,
-        strategy_params: Dict[str, Any]
+        initial_cash: float = 100000.0,
+        commission: float = 0.0003,
+        slippage: float = 0.0001,
+        size: int = 100,
+        margin: float = 1.0,
+        trade_on_close: bool = False,
+        **kwargs
     ):
-        """
-        初始化回测引擎基类
-
+        """初始化引擎
+        
         Args:
-            symbols: 交易标的代码列表
-            strategy_name: 策略名称
+            strategy_class: 策略类
+            strategy_params: 策略参数字典
+            symbols: 交易标的字典 {symbol: {"name": name, "industry": industry}}
             start_date: 回测开始日期
             end_date: 回测结束日期
             initial_cash: 初始资金
-            strategy_params: 策略参数
+            commission: 佣金率
+            slippage: 滑点率
+            size: 每手数量
+            margin: 保证金率
+            trade_on_close: 是否以收盘价交易
+            **kwargs: 其他参数
         """
-        self.current_time = datetime.strptime("2025-02-15 18:49:36", "%Y-%m-%d %H:%M:%S")
-        self.current_user = "emmoblin"
-        
+        self.strategy_class = strategy_class
+        self.strategy_params = strategy_params
         self.symbols = symbols
-        self.strategy_name = strategy_name
         self.start_date = start_date
         self.end_date = end_date
         self.initial_cash = initial_cash
-        self.strategy_params = strategy_params
+        self.commission = commission
+        self.slippage = slippage
+        self.size = size
+        self.margin = margin
+        self.trade_on_close = trade_on_close
+        self.kwargs = kwargs
         
-        # 存储回测结果
-        self.results = {}
-        self.trades_list = []
+        # 运行状态
+        self.is_running = False
+        self.progress = 0.0
+        self.status = "初始化"
+        self.error = None
+    
+    def run(self) -> Dict[str, Any]:
+        """运行回测
         
-        # 创建数据缓存目录
-        self.cache_dir = Path('data/stock_data')
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        Returns:
+            回测结果字典
+        """
+        raise NotImplementedError("子类必须实现run方法")
     
-    def initialize(self):
-        """初始化引擎"""
-        raise NotImplementedError
+    def stop(self):
+        """停止回测"""
+        self.is_running = False
+        self.status = "已停止"
     
-    def run(self):
-        """运行回测"""
-        raise NotImplementedError
-    
-    def save_results(self, output_dir: str = 'results'):
-        """保存回测结果"""
-        raise NotImplementedError
+    def get_status(self) -> Dict[str, Any]:
+        """获取运行状态
+        
+        Returns:
+            状态信息字典
+        """
+        return {
+            "is_running": self.is_running,
+            "progress": self.progress,
+            "status": self.status,
+            "error": str(self.error) if self.error else None
+        }

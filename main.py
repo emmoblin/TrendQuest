@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import datetime
 from typing import Dict, Any, Optional
 from ui.backtest_page import BacktestPage
+from ui.stock_pool_page import StockPoolPage
 from utils.log_init import get_logger
 import sys
 import os
@@ -14,7 +15,7 @@ class TrendQuestApp:
     
     def __init__(self):
         """初始化应用"""
-        self.current_time = datetime.strptime("2025-02-16 15:24:11", "%Y-%m-%d %H:%M:%S")
+        self.current_time = datetime.strptime("2025-02-16 16:47:41", "%Y-%m-%d %H:%M:%S")
         self.current_user = "emmoblin"
         self._configure_app()
         self._init_session_state()
@@ -74,16 +75,25 @@ class TrendQuestApp:
             st.header("功能导航")
             pages = {
                 "回测": "📊 策略回测",
+                "股票池": "📁 股票池管理",
                 "实盘": "💹 实盘交易",
                 "数据": "📈 数据中心",
                 "策略": "🔧 策略管理",
                 "设置": "⚙️ 系统设置"
             }
             
-            for page_id, page_name in pages.items():
-                if st.button(page_name, key=f"nav_{page_id}"):
-                    st.session_state.page = page_id
-                    st.experimental_rerun()
+            # 使用列布局优化按钮显示
+            col1, col2 = st.columns(2)
+            for idx, (page_id, page_name) in enumerate(pages.items()):
+                with col1 if idx % 2 == 0 else col2:
+                    if st.button(
+                        page_name,
+                        key=f"nav_{page_id}",
+                        use_container_width=True
+                    ):
+                        st.session_state.page = page_id
+                        # 使用新的 rerun() 方法
+                        st.rerun()
             
             # 系统信息
             st.markdown("---")
@@ -104,6 +114,10 @@ class TrendQuestApp:
             if st.session_state.page == "回测":
                 backtest_page = BacktestPage()
                 backtest_page.render()
+            
+            elif st.session_state.page == "股票池":
+                stock_pool_page = StockPoolPage()
+                stock_pool_page.render()
                 
             elif st.session_state.page == "实盘":
                 self._show_coming_soon("实盘交易功能开发中...")
@@ -216,7 +230,7 @@ class TrendQuestApp:
         except Exception as e:
             st.error(f"应用运行失败: {str(e)}")
             logger.error("应用运行失败", exc_info=True)
-            
+
 def main():
     """主函数"""
     try:

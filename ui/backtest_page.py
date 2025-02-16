@@ -6,7 +6,7 @@ from ui.backtest_results import display_results
 from ui.backtest_help import display_backtest_help
 from stock_pool_manager import StockPoolManager
 from utils.log_init import get_logger
-from backtest_engine import BacktestEngine
+from engine.backtest_engine import BacktestEngine
 
 logger = get_logger(__name__)
 

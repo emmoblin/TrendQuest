@@ -29,6 +29,26 @@ class BaseStrategy(bt.Strategy):
         
         # 设置技术指标
         self.setup_indicators()
+
+    @classmethod
+    def get_default_params(cls) -> Dict[str, Dict[str, Any]]:
+        """获取策略默认参数
+        
+        Returns:
+            参数配置字典，格式如下：
+            {
+                "param_name": {
+                    "display_name": "显示名称",
+                    "type": "参数类型(float/int/str)",
+                    "min": 最小值,
+                    "max": 最大值,
+                    "default": 默认值,
+                    "step": 步进值,
+                    "description": "参数描述"
+                }
+            }
+        """
+        return {}
     
     def setup_indicators(self):
         """设置技术指标"""
