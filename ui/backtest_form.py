@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Tuple
 from strategies.strategy_factory import get_strategy, list_strategies, get_display_names
 from utils.log_init import get_logger
-from utils.utils_manager import StockPoolManager
+from stock_pool_manager import StockPoolManager
 
 logger = get_logger(__name__)
 
