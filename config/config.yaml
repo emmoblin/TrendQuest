@@ -1,0 +1,30 @@
+system:
+  version: 1.0.0
+  debug: false
+  log_level: INFO
+  data_cache_days: 7
+trading:
+  commission_rate: 0.0003
+  slippage: 0.0002
+  min_trade_unit: 100
+  max_position_size: 0.2
+backtest:
+  default_initial_cash: 1000000
+  default_strategy: DualMA
+  risk_free_rate: 0.03
+  performance_benchmark: '000300'
+display:
+  theme: light
+  chart_style: default
+  date_format: '%Y-%m-%d'
+theme: 暗色
+data_cache_days: 7
+commission_rate: 0.0003
+slippage: 0.0002
+max_positions: 5
+position_size: 0.2
+last_modified: '2025-02-15 18:13:27'
+modified_by: emmoblin
+_metadata:
+  last_modified: '2025-02-15 18:54:58'
+  modified_by: emmoblin

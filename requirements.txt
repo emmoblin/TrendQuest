@@ -1,0 +1,21 @@
+# 核心依赖
+streamlit>=1.32.0
+pandas>=2.0.0
+numpy>=1.24.0
+backtrader>=1.9.76.123
+akshare>=1.10.0
+plotly>=5.18.0
+
+# 数据处理
+pyarrow>=14.0.1
+fastparquet>=2023.10.1
+ccxt>=4.1.13
+
+# 工具依赖
+pyyaml>=6.0.1
+python-dateutil>=2.8.2
+tqdm>=4.66.1
+
+# 可选依赖
+xlsxwriter>=3.1.9  # Excel导出支持
+jinja2>=3.1.2      # 报告模板
